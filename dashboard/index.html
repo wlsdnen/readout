@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readout</title>
+<style>
+  /* Chart and status colors: dataviz reference palette (validated); surfaces and ink from the same instance. */
+  :root {
+    --plane: #f4f4f1; --surface: #ffffff; --surface-2: #f8f8f6; --sunken: #efeee9;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --line: #e6e5df; --line-strong: #d3d2ca;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+    --good-ink: #006300; --bad-ink: #b42e2e;
+    --add-bg: #e3f4e4; --del-bg: #fbe7e5;
+    --accent: #2a78d6; --accent-soft: #e8f1fc;
+    --shadow: 0 1px 2px rgba(20, 20, 15, .06), 0 4px 16px rgba(20, 20, 15, .05);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --plane: #0d0d0d; --surface: #1a1a19; --surface-2: #202020; --sunken: #262624;
+      --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --line: #2c2c2a; --line-strong: #383835;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --good-ink: #0ca30c; --bad-ink: #ef6a5f;
+      --add-bg: #17301c; --del-bg: #3a1f1d;
+      --accent: #3987e5; --accent-soft: #1b2a3d;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --plane: #0d0d0d; --surface: #1a1a19; --surface-2: #202020; --sunken: #262624;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --line: #2c2c2a; --line-strong: #383835;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --good-ink: #0ca30c; --bad-ink: #ef6a5f;
+    --add-bg: #17301c; --del-bg: #3a1f1d;
+    --accent: #3987e5; --accent-soft: #1b2a3d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--plane); color: var(--ink); font: 14px/1.55 "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  code, pre, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  button, select, input { font: inherit; color: inherit; }
+  .muted { color: var(--muted); } .ink2 { color: var(--ink-2); }
+
+  /* ---------- top bar ---------- */
+  .top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--plane) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .top-inner { display: flex; align-items: center; gap: 14px; padding: 10px 20px; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 15px; letter-spacing: -.01em; margin-right: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 12.5px; white-space: nowrap; }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pulse.on { background: var(--good); box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 60%, transparent); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  @media (prefers-reduced-motion: reduce) { .pulse.on { animation: none; } }
+  .mini-bar { width: 54px; height: 5px; border-radius: 3px; background: var(--sunken); overflow: hidden; }
+  .mini-bar > i { display: block; height: 100%; background: var(--s1); }
+  .spacer { flex: 1; }
+  .ghost { background: transparent; border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12.5px; }
+  .ghost:hover { background: var(--surface); }
+  .stale { color: var(--bad-ink); }
+  .live-panel { display: none; padding: 4px 20px 16px; gap: 14px; grid-template-columns: 2fr 1fr; }
+  .live-panel.open { display: grid; }
+  @media (max-width: 900px) { .live-panel.open { grid-template-columns: 1fr; } }
+
+  /* ---------- layout ---------- */
+  .layout { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; height: calc(100vh - 53px); }
+  .list-pane { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--surface-2); }
+  .detail-pane { overflow-y: auto; min-width: 0; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; height: auto; }
+    .list-pane { border-right: 0; }
+    body.reading .list-pane { display: none; }
+    body:not(.reading) .detail-pane { display: none; }
+  }
+
+  /* ---------- list ---------- */
+  .filters { padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+  .seg { display: flex; background: var(--sunken); border-radius: 9px; padding: 3px; gap: 2px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 5px 6px; border-radius: 7px; font-size: 12.5px; cursor: pointer; color: var(--ink-2); white-space: nowrap; }
+  .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 600; }
+  .seg .n { color: var(--muted); font-weight: 400; margin-left: 3px; }
+  .row2 { display: flex; gap: 6px; }
+  .row2 select, .row2 input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: 12.5px; }
+  .list { overflow-y: auto; flex: 1; padding: 4px 8px 20px; }
+  .day { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 14px 8px 6px; letter-spacing: .02em; }
+  .item { display: grid; grid-template-columns: 22px 1fr; gap: 2px 10px; padding: 10px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; }
+  .item:hover { background: var(--surface); }
+  .item.sel { background: var(--surface); border-color: var(--line-strong); box-shadow: var(--shadow); }
+  .item .v { font-weight: 600; font-size: 13.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .item .m { grid-column: 2; display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--muted); flex-wrap: wrap; }
+  .item .k { grid-column: 2; font-size: 12px; margin-top: 2px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 30px 14px; text-align: center; }
+
+  /* status icon: shape + color + label text elsewhere, never color alone */
+  .st { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 800; color: #fff; flex: none; margin-top: 1px; }
+  .st.success { background: var(--good); } .st.partial { background: var(--warning); color: #0b0b0b; } .st.failed { background: var(--critical); }
+  .tag { display: inline-flex; align-items: center; padding: 0 7px; height: 19px; border-radius: 6px; font-size: 11px; background: var(--sunken); color: var(--ink-2); white-space: nowrap; }
+  .tag.warn { background: color-mix(in srgb, var(--warning) 28%, transparent); color: var(--ink); }
+  .tag.prop { background: var(--accent-soft); color: var(--accent); }
+  .delta-up { color: var(--good-ink); } .delta-down { color: var(--bad-ink); } .delta-hold { color: var(--muted); }
+
+  /* ---------- detail ---------- */
+  .detail { max-width: 980px; margin: 0 auto; padding: 26px 28px 60px; }
+  .back { display: none; margin-bottom: 12px; }
+  @media (max-width: 900px) { .back { display: inline-block; } .detail { padding: 18px 16px 48px; } }
+  .d-head { display: flex; gap: 14px; align-items: flex-start; }
+  .d-head .st { width: 30px; height: 30px; font-size: 15px; }
+  .d-title { font-size: 13px; color: var(--ink-2); margin: 0 0 2px; }
+  .d-verdict { font-size: 22px; line-height: 1.35; font-weight: 700; letter-spacing: -.015em; margin: 0; }
+  .d-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 20px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+  .tile .l { font-size: 12px; color: var(--ink-2); }
+  .tile .num { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin-top: 2px; }
+  .tile .num small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .tile .d { font-size: 12.5px; margin-top: 2px; }
+  .tile .from { color: var(--muted); }
+  .section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-top: 14px; box-shadow: var(--shadow); }
+  .section > h3 { margin: 0 0 10px; font-size: 13px; font-weight: 650; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .section > h3 .k { font-size: 11px; font-weight: 500; color: var(--muted); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11.5px; position: sticky; top: 0; background: var(--surface); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: 0; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 700px) { .pair { grid-template-columns: 1fr; } }
+  .side { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+  .side.after { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .side .lab { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  .side img, .gallery img { max-width: 100%; border-radius: 8px; display: block; border: 1px solid var(--line); }
+  .big { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
+  .big small { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 4px; }
+  .cap { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .diff pre { padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; line-height: 1.6; }
+  .diff .add { background: var(--add-bg); display: inline-block; width: 100%; } .diff .del { background: var(--del-bg); display: inline-block; width: 100%; } .diff .hunk { color: var(--muted); }
+  ins { background: var(--add-bg); text-decoration: none; border-radius: 3px; padding: 0 1px; } del { background: var(--del-bg); border-radius: 3px; padding: 0 1px; }
+  .axes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .axis { display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); min-width: 130px; }
+  .axis b { font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+  .axis small { color: var(--muted); font-size: 11.5px; word-break: break-word; max-width: 280px; }
+  .axis.changed { border-color: var(--accent); background: var(--accent-soft); }
+  .axis .dotc { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .axis.changed .dotc { background: var(--accent); }
+  .note { margin-top: 10px; padding: 9px 12px; border-radius: 9px; font-size: 13px; background: color-mix(in srgb, var(--warning) 18%, transparent); }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .gallery figure { margin: 0; } .gallery figcaption { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; margin-bottom: 6px; }
+  .sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: 3px; }
+  .chart-wrap { position: relative; }
+  svg.chart { width: 100%; display: block; overflow: visible; }
+  .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .chart .axis-t { fill: var(--muted); font-size: 11px; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--plane); font-size: 12px; padding: 5px 8px; border-radius: 7px; white-space: nowrap; transform: translate(-50%, -110%); display: none; }
+  iframe.embed { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+  ul.plain { margin: 0; padding-left: 0; list-style: none; }
+  ul.plain li { padding: 5px 0; display: flex; gap: 8px; align-items: baseline; }
+  ul.plain li::before { content: ""; width: 12px; height: 12px; border: 1.5px solid var(--line-strong); border-radius: 4px; flex: none; transform: translateY(2px); }
+  .conf { display: flex; gap: 8px; align-items: baseline; padding: 5px 0; }
+  .lvl { font-size: 11px; padding: 1px 7px; border-radius: 6px; flex: none; font-weight: 600; }
+  .lvl.verified { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good-ink); }
+  .lvl.estimated { background: color-mix(in srgb, var(--warning) 26%, transparent); color: var(--ink); }
+  .lvl.unverified { background: var(--sunken); color: var(--ink-2); }
+  .proposal { border-style: dashed; border-color: var(--accent); background: var(--accent-soft); }
+  .lane { display: grid; grid-template-columns: minmax(130px, 32%) 1fr; gap: 12px; align-items: center; min-height: 24px; }
+  .lane .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+  .track { position: relative; height: 10px; background: var(--sunken); border-radius: 5px; }
+  .seg-bar { position: absolute; top: 0; bottom: 0; border-radius: 5px; min-width: 4px; }
+  .tool { font-size: 11.5px; color: var(--good-ink); }
+  .job + .job { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .bar { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
+  .bar > i { display: block; height: 100%; background: var(--s1); }
+  details.repro summary { cursor: pointer; font-size: 13px; font-weight: 650; }
+  details.repro pre { margin-top: 10px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--line); }
+  .welcome { padding: 80px 20px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="top-inner">
+    <span class="brand">Readout</span>
+    <span id="live-pills" style="display:contents"></span>
+    <span class="spacer"></span>
+    <span id="updated" class="muted" style="font-size:12px">연결 중</span>
+    <button class="ghost" id="live-toggle" aria-expanded="false">진행 상황 보기</button>
+  </div>
+  <div class="live-panel" id="live-panel">
+    <div class="section" style="margin:0"><h3>에이전트 <span class="k">최근 30분</span></h3><div id="sessions"></div></div>
+    <div class="section" style="margin:0"><h3>작업</h3><div id="jobs"></div></div>
+  </div>
+</div>
+
+<div class="layout">
+  <aside class="list-pane">
+    <div class="filters">
+      <div class="seg" id="seg">
+        <button data-f="all" class="on">전체</button>
+        <button data-f="attention">확인 필요</button>
+        <button data-f="interpreted">해석된 것</button>
+      </div>
+      <div class="row2">
+        <select id="f-project" aria-label="프로젝트"><option value="">모든 프로젝트</option></select>
+        <select id="f-type" aria-label="종류"><option value="">모든 종류</option></select>
+      </div>
+      <div class="row2"><input id="f-q" type="search" placeholder="결론·제목 검색" aria-label="검색"></div>
+    </div>
+    <div class="list" id="list" role="listbox" aria-label="결과 카드"></div>
+  </aside>
+  <main class="detail-pane" id="detail-pane"><div class="welcome">왼쪽에서 카드를 고르세요</div></main>
+</div>
+
+<script>
+const POLL_MS = 1000;
+const WINDOW_MS = 30 * 60 * 1000;
+const STALE_JOB_MS = 30000;
+const SERIES = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
+const STATUS = { success: ['✓', '성공'], partial: ['!', '부분 성공'], failed: ['✕', '실패'] };
+const LEVEL = { verified: '검증함', estimated: '추정', unverified: '미확인' };
+const AGENT_COLOR = { running: 'var(--good)', idle: 'var(--muted)', done: 'var(--s1)' };
+
+const cache = new Map();   // card file name -> { size, card }
+const charts = new Map();  // chart element id -> series, for the hover layer
+let selected = null, filter = 'all', listSignature = '', detailSignature = '';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Integers stay exact (counts, ids); fractions keep 4 decimals.
+const fmt = v => v == null ? '–' : typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString() : String(Math.round(v * 1e4) / 1e4)) : esc(v);
+// Headline numbers (tiles, list) are rounded for reading; tables keep fmt's exact values.
+const nice = v => typeof v !== 'number' || Number.isInteger(v) ? fmt(v) : Math.abs(v) >= 100 ? Math.round(v).toLocaleString() : String(+v.toPrecision(3));
+const short = v => /[\/]/.test(String(v ?? '')) ? basename(v) : String(v ?? '');
+const clock = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 3600 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${Math.floor(s / 3600)}시간 ${Math.floor(s % 3600 / 60)}분`; };
+const basename = p => String(p ?? '').split('/').filter(Boolean).pop() ?? '';
+const asset = (card, src) => /^(https?:|data:|\/)/.test(src) ? src : `cards/${encodeURIComponent(card.id)}/${src}`;
+const text = v => typeof v === 'string' ? v : JSON.stringify(v, null, 1);
+const statusIcon = s => `<span class="st ${esc(s)}" aria-label="${STATUS[s]?.[1] ?? esc(s)}" title="${STATUS[s]?.[1] ?? esc(s)}">${STATUS[s]?.[0] ?? '?'}</span>`;
+
+function ago(ts) {
+  const s = (Date.now() - ts) / 1000;
+  if (s < 60) return '방금';
+  if (s < 3600) return `${Math.floor(s / 60)}분 전`;
+  if (s < 86400) return `${Math.floor(s / 3600)}시간 전`;
+  return new Date(ts).toLocaleDateString();
+}
+function dayLabel(ts) {
+  const d = new Date(ts), t = new Date(), y = new Date(Date.now() - 86400000);
+  if (d.toDateString() === t.toDateString()) return '오늘';
+  if (d.toDateString() === y.toDateString()) return '어제';
+  return d.toLocaleDateString('ko', { month: 'long', day: 'numeric', weekday: 'short' });
+}
+
+async function getJson(path) {
+  const r = await fetch(path, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  return r.json();
+}
+
+/* ---------- metric judgement, shared by tiles, list and tables ---------- */
+
+function judge(r) {
+  const d = typeof r.before === 'number' && typeof r.after === 'number' ? r.after - r.before : null;
+  if (d == null) return { d, cls: 'delta-hold', word: '' };
+  const pct = r.before ? ` (${d > 0 ? '+' : ''}${(100 * d / Math.abs(r.before)).toFixed(1)}%)` : '';
+  const hold = r.ci != null && Math.abs(d) <= r.ci;
+  const good = d !== 0 && r.better && ((d > 0) === (r.better === 'up'));
+  const cls = d === 0 || hold || !r.better ? 'delta-hold' : good ? 'delta-up' : 'delta-down';
+  const word = hold ? '판단 보류' : !r.better || d === 0 ? '' : good ? '개선' : '악화';
+  const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '';
+  return { d, pct, cls, word, arrow };
+}
+
+// Up to four headline numbers: metric rows first, then numeric before/after pairs.
+function highlights(card) {
+  const out = [];
+  for (const b of card.blocks) {
+    if (b.kind === 'metrics') for (const r of b.rows) if (typeof r.after === 'number') out.push({ ...r });
+    if (b.kind === 'compare') {
+      const num = v => typeof v === 'number' ? v : v?.number;
+      if (num(b.before) != null && num(b.after) != null)
+        out.push({ name: b.title ?? '전 / 후', before: num(b.before), after: num(b.after), unit: b.after.unit ?? b.before.unit });
+    }
+  }
+  return out.slice(0, 4);
+}
+
+/* ---------- live strip ---------- */
+
+function treeOrder(agents) {
+  const out = [];
+  const walk = (parent, depth) => agents.filter(a => (a.parent ?? null) === parent).sort((a, b) => a.startedAt - b.startedAt)
+    .forEach(a => { out.push({ a, depth }); walk(a.id, depth + 1); });
+  walk(null, 0);
+  return out;
+}
+
+function lanes(rows, from, span, now) {
+  return rows.map(({ a, depth }) => {
+    const start = Math.max(a.startedAt, from), end = a.endedAt ?? now;
+    const left = ((start - from) / span) * 100, width = Math.max(0.5, ((end - start) / span) * 100);
+    const name = a.type === 'main' ? 'main' : `${a.type}${a.description ? ` · ${a.description}` : ''}`;
+    return `<div class="lane" title="${esc(name)}">
+      <div class="label" style="padding-left:${depth * 14}px">${esc(name)}
+        ${a.currentTool ? `<span class="tool mono">› ${esc(a.currentTool)}</span>` : ''}
+        <span class="muted">${a.toolCount}회 · ${clock(end - a.startedAt)}</span></div>
+      <div class="track"><div class="seg-bar" style="left:${left}%;width:${width}%;background:${AGENT_COLOR[a.status] ?? 'var(--s1)'}"></div></div></div>`;
+  }).join('');
+}
+
+function renderLive(index, sessions, now) {
+  const agents = sessions.flatMap(s => s.agents);
+  const running = agents.filter(a => a.status === 'running');
+  const activeJobs = index.jobs.filter(j => j.stage !== 'done' && now - j.updatedAt < STALE_JOB_MS * 4);
+  const today = [...cache.values()].filter(c => new Date(c.card.createdAt * 1000).toDateString() === new Date().toDateString());
+  const failedToday = today.filter(c => c.card.status !== 'success').length;
+  $('live-pills').innerHTML = [
+    `<span class="pill"><span class="pulse ${running.length ? 'on' : ''}"></span>${running.length ? `에이전트 ${running.length}개 실행 중` : '대기 중'}${running[0]?.currentTool ? ` <span class="mono muted">› ${esc(running[0].currentTool)}</span>` : ''}</span>`,
+    ...activeJobs.slice(0, 3).map(j => {
+      const stale = now - j.updatedAt > STALE_JOB_MS;
+      return `<span class="pill">${esc(j.name)} ${j.pct != null ? `<span class="mini-bar"><i style="width:${Math.min(100, j.pct)}%"></i></span>${j.pct}%` : esc(j.stage)}${stale ? ' <span class="stale">응답 없음</span>' : ''}</span>`;
+    }),
+    `<span class="pill">오늘 카드 ${today.length}${failedToday ? ` · <span class="delta-down">확인 필요 ${failedToday}</span>` : ''}</span>`,
+  ].join('');
+  $('sessions').innerHTML = sessions.length ? sessions.map(s => `<div style="margin-bottom:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">${esc(basename(s.cwd))}</div>
+      ${lanes(treeOrder(s.agents.map(a => ({ ...a, parent: a.parent ?? null }))), now - WINDOW_MS, WINDOW_MS, now)}</div>`).join('')
+    : '<div class="muted">실행 중인 세션이 없습니다.</div>';
+  $('jobs').innerHTML = index.jobs.length ? index.jobs.map(j => {
+    const stale = now - j.updatedAt > STALE_JOB_MS && j.stage !== 'done';
+    return `<div class="job"><div style="display:flex;justify-content:space-between;gap:8px"><strong>${esc(j.name)}</strong>
+        <span class="${stale ? 'stale' : 'muted'}" style="font-size:12px">${esc(j.stage)}${stale ? ' · 응답 없음' : ''}</span></div>
+      ${j.pct != null ? `<div class="bar"><i style="width:${Math.min(100, j.pct)}%"></i></div>` : ''}
+      <div class="muted" style="font-size:12px">${j.pct != null ? `${j.pct}% · ` : ''}${esc(j.msg)}${j.metric ? ` · ${esc(j.metric)} ${fmt(j.series.at(-1))}` : ''}</div>
+      ${j.series.length > 1 ? lineChart([{ name: j.metric, points: j.series }], 70, false) : ''}</div>`;
+  }).join('') : '<div class="muted">진행 중인 작업이 없습니다.</div>';
+}
+
+/* ---------- block renderers: one per kind in src/readout/cards.py KINDS ---------- */
+
+let chartSeq = 0;
+function lineChart(series, height = 180, axes = true) {
+  const all = series.flatMap(s => s.points).filter(v => typeof v === 'number');
+  if (all.length < 2) return '<div class="muted">데이터 부족</div>';
+  const W = 640, H = height, L = axes ? 44 : 4, R = 8, T = 8, B = axes ? 20 : 4;
+  const lo = Math.min(...all), hi = Math.max(...all), span = (hi - lo) || 1;
+  const n = Math.max(...series.map(s => s.points.length));
+  const x = i => L + (i / Math.max(1, n - 1)) * (W - L - R), y = v => T + (1 - (v - lo) / span) * (H - T - B);
+  const id = `chart${chartSeq++}`;
+  charts.set(id, { series, n, L, R, W });
+  const grid = axes ? [lo, (lo + hi) / 2, hi].map(v => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="axis-t" x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`).join('') : '';
+  const lines = series.map((s, k) => `<polyline points="${s.points.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${SERIES[k % SERIES.length]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`).join('');
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s, k) => `<span><span class="sw" style="background:${SERIES[k % SERIES.length]}"></span>${esc(s.name)}</span>`).join('')}</div>` : '';
+  return `${legend}<div class="chart-wrap"><svg class="chart" id="${id}" data-chart="${id}" viewBox="0 0 ${W} ${H}" style="height:${H}px" role="img"
+      aria-label="${esc(series.map(s => s.name).join(', '))}: ${fmt(lo)}에서 ${fmt(hi)}">${grid}${lines}<line class="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--line-strong)" visibility="hidden"/>
+      <rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/></svg><div class="tip"></div></div>`;
+}
+
+function side(card, v) {
+  if (v == null) return '<span class="muted">–</span>';
+  if (typeof v === 'number') return `<div class="big">${fmt(v)}</div>`;
+  if (typeof v === 'string') return `<div>${esc(v)}</div>`;
+  if (v.image) return `<img src="${esc(asset(card, v.image))}" alt="${esc(v.alt ?? v.caption ?? '')}">${v.caption ? `<div class="cap">${esc(v.caption)}</div>` : ''}`;
+  if (v.code != null) return `<pre>${esc(v.code)}</pre>`;
+  if (v.number != null) return `<div class="big">${fmt(v.number)}${v.unit ? `<small>${esc(v.unit)}</small>` : ''}</div>`;
+  return `<div>${esc(v.text ?? JSON.stringify(v))}</div>`;
+}
+
+// Word-level diff so a reader sees exactly what changed between two outputs.
+function wordDiff(a, b) {
+  const x = String(a ?? '').split(/(\s+)/), y = String(b ?? '').split(/(\s+)/);
+  if (x.length * y.length > 250000) return [esc(a), esc(b)];
+  const Lc = Array.from({ length: x.length + 1 }, () => new Int32Array(y.length + 1));
+  for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--)
+    Lc[i][j] = x[i] === y[j] ? Lc[i + 1][j + 1] + 1 : Math.max(Lc[i + 1][j], Lc[i][j + 1]);
+  let i = 0, j = 0, outA = '', outB = '';
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { outA += esc(x[i]); outB += esc(y[j]); i++; j++; }
+    else if (Lc[i + 1][j] >= Lc[i][j + 1]) outA += `<del>${esc(x[i++])}</del>`;
+    else outB += `<ins>${esc(y[j++])}</ins>`;
+  }
+  while (i < x.length) outA += `<del>${esc(x[i++])}</del>`;
+  while (j < y.length) outB += `<ins>${esc(y[j++])}</ins>`;
+  return [outA, outB];
+}
+
+const BLOCKS = {
+  text: (c, b) => `<div style="font-size:14.5px;line-height:1.7">${esc(b.text).replace(/\n/g, '<br>')}</div>`,
+  compare: (c, b) => `<div class="pair">
+      <div class="side"><div class="lab">${esc(b.labels?.[0] ?? '전')}</div>${side(c, b.before)}</div>
+      <div class="side after"><div class="lab">${esc(b.labels?.[1] ?? '후')}</div>${side(c, b.after)}</div></div>`,
+  diff: (c, b) => `<div class="diff"><pre>${String(b.unified).split('\n').map(l =>
+      `<span class="${l.startsWith('@@') ? 'hunk' : l.startsWith('+') && !l.startsWith('+++') ? 'add' : l.startsWith('-') && !l.startsWith('---') ? 'del' : ''}">${esc(l)}</span>`).join('\n')}</pre></div>`,
+  metrics: (c, b) => `<div class="scroll"><table><tr><th>지표</th><th class="num">${esc(b.labels?.[0] ?? '전')}</th><th class="num">${esc(b.labels?.[1] ?? '후')}</th><th class="num">변화</th><th>판단</th><th class="num">n</th></tr>${b.rows.map(r => {
+      const j = judge(r);
+      return `<tr><td>${esc(r.name)}${r.unit ? ` <span class="muted">${esc(r.unit)}</span>` : ''}</td><td class="num">${fmt(r.before)}</td><td class="num"><b>${fmt(r.after)}</b></td>
+        <td class="num ${j.cls}">${j.d == null ? '–' : `${j.arrow} ${j.d > 0 ? '+' : ''}${fmt(j.d)}${j.pct}`}</td><td class="${j.cls}">${j.word}</td>
+        <td class="num muted">${fmt(r.n)}${r.ci != null ? ` ±${fmt(r.ci)}` : ''}</td></tr>`;
+    }).join('')}</table></div>`,
+  chart: (c, b) => lineChart(b.series),
+  samples: (c, b) => {
+    const [la, lb] = b.labels ?? ['A', 'B'];
+    const hasExpected = b.rows.some(r => r.expected != null);
+    const tag = t => t ? `<span class="tag ${t === 'regressed' ? 'warn' : ''}">${{ improved: '개선', regressed: '악화', changed: '변경' }[t] ?? esc(t)}</span>` : '';
+    if (!b.rows.length) return '<div class="muted">달라진 샘플이 없습니다.</div>';
+    return `<div class="scroll"><table><tr><th></th><th>입력</th><th>${esc(la)}</th><th>${esc(lb)}</th>${hasExpected ? '<th>정답</th>' : ''}</tr>${b.rows.map(r => {
+      const [da, db] = wordDiff(text(r.a), text(r.b));
+      return `<tr><td>${tag(r.tag)}<div class="muted mono" style="font-size:11px;margin-top:3px">${esc(r.id ?? '')}</div></td><td>${esc(text(r.input))}</td><td>${da}</td><td>${db}</td>${hasExpected ? `<td class="ink2">${esc(text(r.expected))}</td>` : ''}</tr>`;
+    }).join('')}</table></div>`;
+  },
+  gallery: (c, b) => `<div class="gallery">${b.items.map(it => `<figure><img src="${esc(asset(c, it.src))}" alt="${esc(it.alt ?? it.caption ?? '')}"><figcaption>${esc(it.caption ?? '')}</figcaption></figure>`).join('')}</div>`,
+  files: (c, b) => {
+    const max = Math.max(1, ...b.rows.map(r => (r.added ?? 0) + (r.removed ?? 0)));
+    return `<div class="scroll"><table><tr><th>파일</th><th class="num">추가</th><th class="num">삭제</th><th style="width:28%"></th></tr>${b.rows.map(r => `<tr><td class="mono">${esc(r.path)}</td>
+      <td class="num delta-up">${r.added == null ? '<span class="muted">?</span>' : `+${r.added}`}</td><td class="num delta-down">${r.removed == null ? '<span class="muted">?</span>' : `-${r.removed}`}</td>
+      <td><div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px"><i style="width:${100 * (r.added ?? 0) / max}%;background:var(--good)"></i><i style="width:${100 * (r.removed ?? 0) / max}%;background:var(--critical)"></i></div></td></tr>`).join('')}</table></div>`;
+  },
+  timeline: (c, b) => {
+    const from = Math.min(...b.agents.map(a => a.startedAt)), to = Math.max(...b.agents.map(a => a.endedAt ?? a.startedAt));
+    const rows = b.agents.map(a => ({ a: { ...a, status: 'done' }, depth: a.type === 'main' ? 0 : 1 }));
+    return `${lanes(rows, from, Math.max(1, to - from), to)}<div class="cap">총 ${clock(to - from)}</div>`;
+  },
+  axes: (c, b) => {
+    const changed = b.axes.filter(a => a.changed).length;
+    return `<div class="axes">${b.axes.map(a => `<div class="axis ${a.changed ? 'changed' : ''}"><b><span class="dotc"></span>${esc(a.name)} · ${a.changed ? '바뀜' : '같음'}</b>
+        ${a.before || a.after ? `<small title="${esc(a.before ?? '')}${a.changed ? ` → ${esc(a.after ?? '')}` : ''}">${esc(short(a.before))}${a.changed ? ` → ${esc(short(a.after))}` : ''}</small>` : ''}</div>`).join('')}</div>
+      ${changed > 1 ? '<div class="note">두 가지 이상이 동시에 바뀌어, 결과 변화의 원인을 하나로 특정할 수 없습니다.</div>' : ''}`;
+  },
+  embed: (c, b) => `<iframe class="embed" sandbox="allow-scripts" src="${esc(asset(c, b.src))}" title="${esc(b.title ?? '첨부')}" style="height:${+b.height || 420}px"></iframe>`,
+  checklist: (c, b) => `<ul class="plain">${b.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`,
+};
+const DEFAULT_TITLE = { compare: '전 / 후', diff: '변경 내용', metrics: '지표', chart: '추이', samples: '샘플', gallery: '이미지', files: '바뀐 파일', timeline: '진행 과정', axes: '무엇이 바뀌었나', checklist: '목록' };
+
+function section(title, body, extraClass = '') {
+  return `<section class="section ${extraClass}">${title ? `<h3>${title}</h3>` : ''}${body}</section>`;
+}
+
+function renderDetail(card) {
+  charts.clear(); chartSeq = 0;
+  const tiles = highlights(card).map(r => {
+    const j = judge(r);
+    return `<div class="tile"><div class="l">${esc(r.name)}</div>
+      <div class="num">${nice(r.after)}${r.unit ? `<small>${esc(r.unit)}</small>` : ''}</div>
+      <div class="d">${r.before != null ? `<span class="from">${nice(r.before)}에서 </span>` : ''}${j.d != null && j.d !== 0 ? `<span class="${j.cls}">${j.arrow} ${nice(Math.abs(j.d))}${j.pct}</span>` : j.d === 0 ? '<span class="delta-hold">변화 없음</span>' : ''}${j.word ? ` <span class="${j.cls}">· ${j.word}</span>` : ''}</div></div>`;
+  }).join('');
+  const blocks = card.blocks.map(b => {
+    const draw = BLOCKS[b.kind];
+    return section(esc(b.title ?? DEFAULT_TITLE[b.kind] ?? ''), draw ? draw(card, b) : `<pre>${esc(JSON.stringify(b, null, 1))}</pre>`);
+  }).join('');
+  const conf = card.confidence?.length ? section('확인 상태', card.confidence.map(c => `<div class="conf"><span class="lvl ${esc(c.level)}">${LEVEL[c.level] ?? esc(c.level)}</span><span>${esc(c.claim)}</span></div>`).join('')) : '';
+  const next = card.next?.length ? section('다음 할 일', `<ul class="plain">${card.next.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`) : '';
+  const proposal = card.proposal ? section(`새 카드 형식 제안 · <span class="mono">${esc(card.proposal.typeName)}</span>`,
+    `<div>${esc(card.proposal.why)}</div><div class="cap">블록: ${esc((card.proposal.blocks ?? []).join(', '))}</div>`, 'proposal') : '';
+  const repro = Object.keys(card.repro ?? {}).length ? `<section class="section"><details class="repro"><summary>재현 정보</summary><pre>${esc(Object.entries(card.repro).map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n'))}</pre></details></section>` : '';
+  return `<div class="detail">
+    <button class="ghost back" data-back>← 목록</button>
+    <div class="d-head">${statusIcon(card.status)}<div style="min-width:0">
+      <p class="d-title">${esc(card.title)}</p>
+      <h1 class="d-verdict">${esc(card.verdict || card.title)}</h1>
+      <div class="d-meta"><span class="tag">${esc(card.type)}</span><span>${STATUS[card.status]?.[1] ?? ''}</span>
+        ${card.unexpected ? '<span class="tag warn">예상과 다름</span>' : ''}${card.proposal ? '<span class="tag prop">형식 제안</span>' : ''}${card.auto ? '<span class="tag">자동 기록</span>' : ''}
+        <span>· ${esc(basename(card.project))}</span><span>· ${new Date(card.createdAt * 1000).toLocaleString()}</span></div></div></div>
+    ${tiles ? `<div class="tiles">${tiles}</div>` : ''}
+    ${proposal}${blocks}${conf}${next}${repro}
+  </div>`;
+}
+
+/* ---------- list ---------- */
+
+function keyLine(card) {
+  const h = highlights(card)[0];
+  if (!h) return '';
+  const j = judge(h);
+  return `<div class="k"><span class="ink2">${esc(h.name)}</span> ${h.before != null ? `${nice(h.before)} → ` : ''}<b>${nice(h.after)}</b>${h.unit ? ` ${esc(h.unit)}` : ''} ${j.word ? `<span class="${j.cls}">${j.word}</span>` : ''}</div>`;
+}
+
+function visibleCards() {
+  const all = [...cache.values()].map(c => c.card).sort((a, b) => b.createdAt - a.createdAt);
+  const project = $('f-project').value, type = $('f-type').value, q = $('f-q').value.trim().toLowerCase();
+  const attention = c => c.status !== 'success' || c.unexpected || c.proposal;
+  const counts = { all: all.length, attention: all.filter(attention).length, interpreted: all.filter(c => !c.auto).length };
+  const shown = all.filter(c => (!project || c.project === project) && (!type || c.type === type)
+    && (filter !== 'attention' || attention(c)) && (filter !== 'interpreted' || !c.auto)
+    && (!q || `${c.verdict} ${c.title}`.toLowerCase().includes(q)));
+  return { all, shown, counts };
+}
+
+function fillSelect(id, values, label) {
+  const sel = $(id), keep = sel.value, want = ['', ...values];
+  if ([...sel.options].map(o => o.value).join('|') === want.join('|')) return;
+  sel.innerHTML = want.map(v => `<option value="${esc(v)}">${v ? esc(id === 'f-project' ? basename(v) : v) : label}</option>`).join('');
+  sel.value = want.includes(keep) ? keep : '';
+}
+
+function render(force = false) {
+  const { all, shown, counts } = visibleCards();
+  fillSelect('f-project', [...new Set(all.map(c => c.project))], '모든 프로젝트');
+  fillSelect('f-type', [...new Set(all.map(c => c.type))].sort(), '모든 종류');
+  document.querySelectorAll('#seg button').forEach(b => {
+    b.classList.toggle('on', b.dataset.f === filter);
+    b.innerHTML = `${{ all: '전체', attention: '확인 필요', interpreted: '해석된 것' }[b.dataset.f]}<span class="n">${counts[b.dataset.f]}</span>`;
+  });
+  if (!selected && shown[0] && matchMedia('(min-width: 901px)').matches) selected = shown[0].id;
+
+  const sig = shown.map(c => `${c.id}:${c.updatedAt}`).join('|') + selected + filter;
+  if (force || sig !== listSignature) {
+    listSignature = sig;
+    let lastDay = '';
+    $('list').innerHTML = shown.length ? shown.map(c => {
+      const day = dayLabel(c.createdAt * 1000), head = day !== lastDay ? `<div class="day">${day}</div>` : '';
+      lastDay = day;
+      return `${head}<div class="item ${c.id === selected ? 'sel' : ''}" role="option" aria-selected="${c.id === selected}" data-id="${esc(c.id)}" tabindex="0">
+        ${statusIcon(c.status)}<div class="v">${esc(c.verdict || c.title)}</div>
+        <div class="m"><span class="tag">${esc(c.type)}</span>${c.unexpected ? '<span class="tag warn">예상과 다름</span>' : ''}${c.proposal ? '<span class="tag prop">형식 제안</span>' : ''}${c.auto ? '<span class="tag">자동</span>' : ''}
+          <span>${esc(basename(c.project))}</span><span>· ${ago(c.createdAt * 1000)}</span></div>${keyLine(c)}</div>`;
+    }).join('') : '<div class="empty">조건에 맞는 카드가 없습니다.</div>';
+  }
+
+  const card = all.find(c => c.id === selected);
+  const dsig = card ? `${card.id}:${card.updatedAt}` : '';
+  if (force || dsig !== detailSignature) {
+    detailSignature = dsig;
+    $('detail-pane').innerHTML = card ? renderDetail(card) : '<div class="welcome">왼쪽에서 카드를 고르세요</div>';
+    $('detail-pane').scrollTop = 0;
+  }
+}
+
+function select(id) {
+  selected = id;
+  document.body.classList.add('reading');
+  history.replaceState(null, '', `#card=${encodeURIComponent(id)}`);
+  render(true);
+}
+
+$('list').addEventListener('click', e => { const it = e.target.closest('.item'); if (it) select(it.dataset.id); });
+$('list').addEventListener('keydown', e => { if (e.key === 'Enter') { const it = e.target.closest('.item'); if (it) select(it.dataset.id); } });
+$('detail-pane').addEventListener('click', e => { if (e.target.closest('[data-back]')) { document.body.classList.remove('reading'); } });
+$('seg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { filter = b.dataset.f; render(true); } });
+['f-project', 'f-type'].forEach(id => $(id).addEventListener('change', () => render(true)));
+$('f-q').addEventListener('input', () => render(true));
+$('live-toggle').addEventListener('click', () => {
+  const open = $('live-panel').classList.toggle('open');
+  $('live-toggle').setAttribute('aria-expanded', open);
+  $('live-toggle').textContent = open ? '진행 상황 닫기' : '진행 상황 보기';
+});
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea') || !['j', 'k', 'ArrowDown', 'ArrowUp'].includes(e.key)) return;
+  const ids = visibleCards().shown.map(c => c.id), i = ids.indexOf(selected);
+  const next = ids[Math.max(0, Math.min(ids.length - 1, i + (e.key === 'j' || e.key === 'ArrowDown' ? 1 : -1)))];
+  if (next && next !== selected) { e.preventDefault(); select(next); document.querySelector(`.item[data-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: 'nearest' }); }
+});
+
+// Hover layer: crosshair plus a tooltip with every series' value at that index.
+document.addEventListener('mousemove', e => {
+  document.querySelectorAll('svg.chart .cross').forEach(l => l.setAttribute('visibility', 'hidden'));
+  document.querySelectorAll('.tip').forEach(t => t.style.display = 'none');
+  const svg = e.target.closest?.('svg[data-chart]');
+  const info = svg && charts.get(svg.dataset.chart);
+  if (!info) return;
+  const box = svg.getBoundingClientRect(), vx = (e.clientX - box.left) / box.width * info.W;
+  const i = Math.max(0, Math.min(info.n - 1, Math.round((vx - info.L) / (info.W - info.L - info.R) * (info.n - 1))));
+  const cx = info.L + (i / Math.max(1, info.n - 1)) * (info.W - info.L - info.R);
+  const cross = svg.querySelector('.cross'); cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.setAttribute('visibility', 'visible');
+  const tip = svg.parentElement.querySelector('.tip');
+  tip.innerHTML = `<b>#${i + 1}</b> ${info.series.map(s => `${esc(s.name)} ${fmt(s.points[i])}`).join(' · ')}`;
+  tip.style.left = `${(cx / info.W) * 100}%`; tip.style.top = '0'; tip.style.display = 'block';
+});
+
+/* ---------- poll ---------- */
+
+async function syncCards(list) {
+  for (const { name, size } of list) {
+    const hit = cache.get(name);
+    if (hit && hit.size === size) continue;
+    try { cache.set(name, { size, card: await getJson(`cards/${encodeURIComponent(name)}`) }); } catch { /* mid-write; next poll */ }
+  }
+  const names = new Set(list.map(c => c.name));
+  for (const name of cache.keys()) if (!names.has(name)) cache.delete(name);
+}
+
+const fromHash = () => decodeURIComponent((location.hash.match(/card=([^&]+)/) ?? [])[1] ?? '') || null;
+selected = fromHash();
+if (selected) document.body.classList.add('reading');
+window.addEventListener('hashchange', () => { const id = fromHash(); if (id && id !== selected) select(id); });
+
+async function refresh() {
+  try {
+    const index = await getJson('index.json');
+    const now = Date.now();
+    const sessions = (await Promise.all(index.sessions.map(id => getJson(`sessions/${id}.json`).catch(() => null)))).filter(Boolean);
+    await syncCards(index.cards ?? []);
+    renderLive(index, sessions, now);
+    const lag = now - index.updatedAt;
+    $('updated').textContent = lag > 5000 ? `${Math.round(lag / 1000)}초째 갱신 없음` : '실시간';
+    $('updated').className = lag > 5000 ? 'stale' : 'muted';
+    render();
+  } catch (err) {
+    $('updated').textContent = `연결 실패: ${err.message}`;
+    $('updated').className = 'stale';
+  }
+}
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>

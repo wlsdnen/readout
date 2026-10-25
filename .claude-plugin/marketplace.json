@@ -1,0 +1,14 @@
+{
+  "name": "readout",
+  "owner": {
+    "name": "Jinwoo Cho"
+  },
+  "description": "readout: live agent progress and result cards for Claude Code",
+  "plugins": [
+    {
+      "name": "readout",
+      "source": "./",
+      "description": "See what Claude Code's agents and your jobs are doing, live, and get every finished piece of work as a result card: verdict, before/after, metrics, confidence"
+    }
+  ]
+}

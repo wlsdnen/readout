@@ -1,0 +1,30 @@
+{
+  "name": "readout",
+  "version": "0.2.0",
+  "description": "See what Claude Code's agents and your jobs are doing, live, and get every finished piece of work as a result card: verdict, before/after, metrics, confidence",
+  "author": {
+    "name": "Jinwoo Cho"
+  },
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "port": {
+      "type": "number",
+      "title": "Dashboard port",
+      "description": "Local port of the dashboard (bound to 127.0.0.1).",
+      "default": 8765
+    },
+    "tunnelHost": {
+      "type": "string",
+      "title": "Tunnel host",
+      "description": "Optional ssh host whose localhost should reach this dashboard, for a browser running on another machine (key auth required). Empty: no tunnel.",
+      "default": ""
+    },
+    "visualFirst": {
+      "type": "boolean",
+      "title": "Visual-first reporting",
+      "description": "Tell Claude to report finished work as a result card (adds a short system-prompt section).",
+      "default": true
+    }
+  }
+}
