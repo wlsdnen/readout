@@ -19,7 +19,7 @@ At the prompt of a Claude Code terminal session:
 
 From a shell: `claude plugin install readout --marketplace wlsdnen/readout`. From a local clone: `claude plugin marketplace add <path to clone>` then `claude plugin install readout@readout`.
 
-The dashboard is at http://localhost:8765 once a session has started (open it in any browser, or in Orca's built-in browser). `/readout` reopens the pane; `/readout:explain` writes a result card on demand.
+The dashboard is at http://localhost:8765 once a session has started (open it in any browser, or in Orca's built-in browser). `/readout` opens or closes the pane (or click its ✕; while the pane has the keyboard, Esc returns to the prompt); `/readout:explain` writes a result card on demand.
 
 Requires macOS or Linux with `python3` on the PATH.
 
@@ -32,6 +32,7 @@ Change them in `/config` under readout.
 | Dashboard port | 8765 | Port of the local dashboard, bound to 127.0.0.1 |
 | Tunnel host | empty | An ssh host whose own localhost should reach this dashboard, for a browser on another machine (`ssh -R`, key auth required) |
 | Visual-first reporting | on | Adds a short system-prompt section telling Claude to report finished work as a result card |
+| Open pane at start | on | Opens the pane when a session starts, in a terminal 144 columns or wider |
 
 Where another plugin bypasses other plugins' system-prompt sections (the debug log says `readout: prompt.compose bypassed by <plugin>`), visual-first reporting has no effect; put the same instruction in your CLAUDE.md instead, e.g. "When reporting finished work, follow the `readout:explain` skill."
 

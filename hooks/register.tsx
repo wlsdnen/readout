@@ -287,12 +287,14 @@ function elapsed(ms: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-type Options = { port?: number; tunnelHost?: string; visualFirst?: boolean }
+type Options = { port?: number; tunnelHost?: string; visualFirst?: boolean; autoOpen?: boolean }
 
 export const register: Register = (on, options) => {
   const opts = options as Options
   const port = opts.port || DEFAULT_PORT
   let promptSection: string | undefined
+  // Drawn now, as the last open answered; a pane waiting for a wider terminal counts as closed.
+  let isPaneShown = false
 
   on('session.start', async ($, e, next) => {
     // Same default as src/readout/paths.py, so Python jobs and the mod meet in one folder.
@@ -335,14 +337,25 @@ export const register: Register = (on, options) => {
       )
     })
 
-    await $.command.register({ name: 'readout', description: 'Open the readout pane' })
-    if ((await $.session.surfaces()).length) void $.ui.open({ id: PANE, title: 'Readout' })
+    await $.command.register({ name: 'readout', description: 'Open or close the readout pane' })
+    if (opts.autoOpen !== false && (await $.session.surfaces()).length)
+      void $.ui.open({ id: PANE, title: 'Readout' }).then(r => (isPaneShown = r.isPlaced))
     return next(e)
   })
 
   on('command.run', { command: 'readout' }, async $ => {
+    if (isPaneShown) {
+      await $.ui.close({ id: PANE })
+      return { text: 'Readout pane closed; /readout opens it again' }
+    }
     const { isPlaced } = await $.ui.open({ id: PANE, title: 'Readout' })
+    isPaneShown = isPlaced
     return { text: `${isPlaced ? 'Readout pane opened' : 'Readout pane waits for a wider terminal'}; dashboard at http://localhost:${port}` }
+  })
+
+  on('ui.close', async ($, e, next) => {
+    if (e.id === PANE) isPaneShown = false
+    return next(e)
   })
 
   on('prompt.compose', async ($, e, next) => {

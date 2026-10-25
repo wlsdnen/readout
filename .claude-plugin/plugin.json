@@ -1,6 +1,6 @@
 {
   "name": "readout",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "See what Claude Code's agents and your jobs are doing, live, and get every finished piece of work as a result card: verdict, before/after, metrics, confidence",
   "author": {
     "name": "Jinwoo Cho"
@@ -24,6 +24,12 @@
       "type": "boolean",
       "title": "Visual-first reporting",
       "description": "Tell Claude to report finished work as a result card (adds a short system-prompt section).",
+      "default": true
+    },
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open pane at start",
+      "description": "Open the readout pane when a session starts (only in a terminal 144 columns or wider). /readout opens or closes it any time.",
       "default": true
     }
   }

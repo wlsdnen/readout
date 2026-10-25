@@ -42,6 +42,7 @@ function stubSession(
   on: Parameters<TestBody>[1],
   files: { name: string; text: string }[],
   git: (args: readonly string[]) => string | undefined = () => undefined,
+  paneCalls: string[] = [],
 ) {
   const writes: { path: string; text: string }[] = []
   on('env.get', (_, e) => ({ value: e.name === 'HOME' ? '/home' : undefined }))
@@ -53,7 +54,14 @@ function stubSession(
   })
   on('clock.every', () => ({ value: undefined }))
   on('command.register', () => ({ value: { command: 'readout' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', () => {
+    paneCalls.push('open')
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', () => {
+    paneCalls.push('close')
+    return { value: undefined } as never
+  })
   on('session.surfaces', () => ({ value: ['terminal'] }) as never)
   on('fs.list', (_, e) =>
     ({ value: e.path.endsWith('/cards') ? files.map(f => ({ name: f.name, kind: 'file', size: f.text.length })) : [] }) as never)
@@ -134,3 +142,21 @@ for (const visualFirst of [true, false])
     expect(sections.map(x => x.id)).toEqual(visualFirst ? ['core', 'readout:visual-first'] : ['core'])
     if (visualFirst) expect(sections[1]!.text).toBe('report on port 8765')
   })
+
+test('/readout closes a shown pane and opens it again', async ($, on) => {
+  const calls: string[] = []
+  stubSession(on, [], undefined, calls)
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  const closed = await $.command.run({ command: 'readout', args: '' } as never)
+  const reopened = await $.command.run({ command: 'readout', args: '' } as never)
+  expect(calls).toEqual(['open', 'close', 'open'])
+  expect((closed as { text: string }).text).toContain('closed')
+  expect((reopened as { text: string }).text).toContain('opened')
+})
+
+test('autoOpen false leaves the pane closed at start', { options: { autoOpen: false } }, async ($, on) => {
+  const calls: string[] = []
+  stubSession(on, [], undefined, calls)
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  expect(calls).toEqual([])
+})

@@ -1,6 +1,6 @@
 [project]
 name = "readout"
-version = "0.2.0"
+version = "0.3.0"
 description = "Live progress and result cards for Claude Code work"
 readme = "README.md"
 license = "MIT"

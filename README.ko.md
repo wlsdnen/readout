@@ -19,7 +19,7 @@ Claude Code 터미널 세션의 입력창에서:
 
 셸에서는 `claude plugin install readout --marketplace wlsdnen/readout`입니다. 로컬에 클론했다면 `claude plugin marketplace add <클론 경로>` 후 `claude plugin install readout@readout`을 실행합니다.
 
-세션이 시작되면 대시보드가 http://localhost:8765 에 열립니다. 아무 브라우저나 Orca 내장 브라우저로 보면 됩니다. `/readout`은 패널을 다시 열고, `/readout:explain`은 결과 카드를 바로 만듭니다.
+세션이 시작되면 대시보드가 http://localhost:8765 에 열립니다. 아무 브라우저나 Orca 내장 브라우저로 보면 됩니다. `/readout`은 패널을 열고 닫습니다(패널의 ✕를 눌러도 닫힙니다. 패널이 키보드를 잡고 있을 때는 Esc로 입력창에 돌아옵니다). `/readout:explain`은 결과 카드를 바로 만듭니다.
 
 macOS나 Linux, 그리고 PATH에 `python3`가 필요합니다.
 
@@ -32,6 +32,7 @@ macOS나 Linux, 그리고 PATH에 `python3`가 필요합니다.
 | Dashboard port | 8765 | 로컬 대시보드 포트. 127.0.0.1에만 열립니다 |
 | Tunnel host | 비어 있음 | 브라우저가 다른 컴퓨터에 있을 때, 그 컴퓨터의 localhost에서 이 대시보드가 열리게 할 ssh 호스트 (`ssh -R`, 키 인증 필요) |
 | Visual-first reporting | 켜짐 | 끝난 작업을 결과 카드로 보고하라는 짧은 지시를 시스템 프롬프트에 추가 |
+| Open pane at start | 켜짐 | 세션을 시작할 때 패널을 자동으로 엶 (터미널 폭 144칸 이상일 때) |
 
 다른 plugin이 plugin들의 시스템 프롬프트 섹션을 건너뛰게 하는 환경에서는 Visual-first reporting이 적용되지 않습니다. 디버그 로그에 `readout: prompt.compose bypassed by <plugin>`이 보이면 이 경우입니다. 이때는 CLAUDE.md에 같은 지시를 직접 넣으세요. 예: "When reporting finished work, follow the `readout:explain` skill."
 
