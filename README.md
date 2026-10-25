@@ -1,11 +1,13 @@
 # readout
 
+English | [한국어](README.ko.md)
+
 See what Claude Code is doing while it works, and get every finished piece of work back as a result card you can read in seconds.
 
 - **Live**: a pane beside the chat and a local dashboard show the main loop and every subagent (current tool, tool count, elapsed time) plus progress of your own jobs (training, LLM batches, scripts) with sparklines.
 - **Result cards**: each turn that edits files gets a card automatically; Claude writes interpreted cards with a one-line verdict, before/after, metrics judged as improved / worse / undecided (within the confidence interval), samples, confidence per claim, next steps and repro info.
 - **LLM experiments**: log calls with input, prompt, schema, model and output; comparing two runs shows which of the four changed, the prompt and schema diffs, metrics on shared samples and the samples whose output changed.
-- **Card types grow with use**: six built-in types (change, experiment, data, performance, investigation, failure); when none fits, Claude proposes a new one and you decide.
+- **Card types grow with use**: seven built-in types (change, experiment, data, performance, investigation, failure, retrospective); when none fits, Claude proposes a new one and you decide.
 
 ## Install
 
